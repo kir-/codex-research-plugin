@@ -62,6 +62,10 @@ function normalizeReviewFinding(finding, index) {
 function normalizeReviewResultData(data) {
   return {
     verdict: data.verdict.trim(),
+    status: typeof data.status === "string" && data.status.trim() ? data.status.trim() : data.verdict.trim(),
+    failed_stage: typeof data.failed_stage === "string" && data.failed_stage.trim() ? data.failed_stage.trim() : null,
+    restart_from: typeof data.restart_from === "string" && data.restart_from.trim() ? data.restart_from.trim() : null,
+    reason: typeof data.reason === "string" && data.reason.trim() ? data.reason.trim() : "",
     summary: data.summary.trim(),
     findings: data.findings.map((finding, index) => normalizeReviewFinding(finding, index)),
     next_steps: data.next_steps
@@ -270,6 +274,20 @@ export function renderReviewResult(parsedResult, meta) {
       if (finding.recommendation) {
         lines.push(`  Recommendation: ${finding.recommendation}`);
       }
+    }
+  }
+
+  if (data.restart_from || data.failed_stage || data.reason) {
+    lines.push("", "Review loop:");
+    lines.push(`- status: ${data.status}`);
+    if (data.failed_stage) {
+      lines.push(`- failed_stage: ${data.failed_stage}`);
+    }
+    if (data.restart_from) {
+      lines.push(`- restart_from: ${data.restart_from}`);
+    }
+    if (data.reason) {
+      lines.push(`- reason: ${data.reason}`);
     }
   }
 

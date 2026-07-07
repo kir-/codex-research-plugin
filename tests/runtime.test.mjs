@@ -384,6 +384,32 @@ test("adversarial review renders structured findings over app-server turn/start"
 
   assert.equal(result.status, 0);
   assert.match(result.stdout, /Missing empty-state guard/);
+  assert.match(result.stdout, /failed_stage: software/);
+  assert.match(result.stdout, /restart_from: software/);
+});
+
+test("adversarial review advances through math and research after software approval", () => {
+  const repo = makeTempDir();
+  const binDir = makeTempDir();
+  installFakeCodex(binDir, "adversarial-clean");
+  initGitRepo(repo);
+  fs.mkdirSync(path.join(repo, "src"));
+  fs.writeFileSync(path.join(repo, "src", "app.js"), "export const value = items[0];\n");
+  run("git", ["add", "src/app.js"], { cwd: repo });
+  run("git", ["commit", "-m", "init"], { cwd: repo });
+  fs.writeFileSync(path.join(repo, "src", "app.js"), "export const value = items[0].id;\n");
+
+  const result = run("node", [SCRIPT, "adversarial-review"], {
+    cwd: repo,
+    env: buildEnv(binDir)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /restart_from: final-synthesis/);
+  const state = JSON.parse(fs.readFileSync(path.join(binDir, "fake-codex-state.json"), "utf8"));
+  assert.match(state.lastTurnStart.prompt, /adversarial research review/);
+  assert.match(state.lastTurnStart.prompt, /"stage": "software"/);
+  assert.match(state.lastTurnStart.prompt, /"stage": "math"/);
 });
 
 test("adversarial review accepts the same base-branch targeting as review", () => {

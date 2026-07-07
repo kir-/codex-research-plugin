@@ -100,17 +100,27 @@ This command is read-only and will not perform any changes. When run in the back
 
 ### `/codex:adversarial-review`
 
-Runs a **steerable** review that questions the chosen implementation and design.
+Runs a **steerable staged review** that questions the chosen implementation, math, research evidence, and final claim.
 
 It can be used to pressure-test assumptions, tradeoffs, failure modes, and whether a different approach would have been safer or simpler.
 
 It uses the same review target selection as `/codex:review`, including `--base <ref>` for branch review.
 It also supports `--wait` and `--background`. Unlike `/codex:review`, it can take extra focus text after the flags.
 
+The staged review order is:
+
+1. Software Review
+2. Math Review
+3. Research Review
+4. Final synthesis by the caller
+
+If any stage fails, the command stops and reports a loop state with `status`, `failed_stage`, `restart_from`, and `reason`.
+The default restart rule is conservative: any software, math, or research fix restarts from Software Review because a later fix can introduce a new software bug. For docs-only or wording-only follow-up, the caller can choose a narrower rerun.
+
 Use it when you want:
 
 - a review before shipping that challenges the direction, not just the code details
-- review focused on design choices, tradeoffs, hidden assumptions, and alternative approaches
+- review focused on software correctness, mathematical validity, research claims, hidden assumptions, and alternative approaches
 - pressure-testing around specific risk areas like auth, data loss, rollback, race conditions, or reliability
 
 Examples:

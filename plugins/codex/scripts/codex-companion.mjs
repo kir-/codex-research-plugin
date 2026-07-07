@@ -238,15 +238,86 @@ async function handleSetup(argv) {
   outputResult(options.json ? finalReport : renderSetupReport(finalReport), options.json);
 }
 
-function buildAdversarialReviewPrompt(context, focusText) {
-  const template = loadPromptTemplate(ROOT_DIR, "adversarial-review");
+const ADVERSARIAL_REVIEW_STAGES = [
+  {
+    id: "software",
+    label: "Software Review",
+    prompt: "adversarial-software-review"
+  },
+  {
+    id: "math",
+    label: "Math Review",
+    prompt: "adversarial-math-review"
+  },
+  {
+    id: "research",
+    label: "Research Review",
+    prompt: "adversarial-research-review"
+  }
+];
+
+function buildAdversarialReviewPrompt(context, focusText, stage, completedStageResults = []) {
+  const template = loadPromptTemplate(ROOT_DIR, stage.prompt);
+  const priorReviews =
+    completedStageResults.length === 0
+      ? "No prior review stages have passed yet."
+      : JSON.stringify(
+          completedStageResults.map((result) => ({
+            stage: result.stage,
+            verdict: result.parsed?.verdict ?? null,
+            summary: result.parsed?.summary ?? null,
+            findings: result.parsed?.findings ?? []
+          })),
+          null,
+          2
+        );
+
   return interpolateTemplate(template, {
-    REVIEW_KIND: "Adversarial Review",
+    REVIEW_KIND: stage.label,
     TARGET_LABEL: context.target.label,
     USER_FOCUS: focusText || "No extra focus provided.",
     REVIEW_COLLECTION_GUIDANCE: context.collectionGuidance,
+    PRIOR_REVIEW_RESULTS: priorReviews,
     REVIEW_INPUT: context.content
   });
+}
+
+function reviewStageFailed(parsed) {
+  return !parsed || parsed.verdict !== "approve";
+}
+
+function stageRestartReason(stageId) {
+  if (stageId === "software") {
+    return "Fixing the software issue invalidates downstream reviews, so the loop should restart at software review after changes.";
+  }
+  if (stageId === "math") {
+    return "Fixing the math issue may alter implementation paths, so software review must be rerun after changes.";
+  }
+  return "Fixing the research issue may change code, experiments, claims, or documentation, so restart at software review unless the fix is strictly docs-only or wording-only.";
+}
+
+function withReviewLoopState(parsed, stage, passedAllStages = false) {
+  if (!parsed) {
+    return parsed;
+  }
+
+  if (passedAllStages) {
+    return {
+      ...parsed,
+      status: "approve",
+      failed_stage: null,
+      restart_from: "final-synthesis",
+      reason: "Software, math, and research review all passed; final synthesis can merge the decision."
+    };
+  }
+
+  return {
+    ...parsed,
+    status: "needs-attention",
+    failed_stage: stage.id,
+    restart_from: "software",
+    reason: stageRestartReason(stage.id)
+  };
 }
 
 function ensureCodexAvailable(cwd) {
@@ -407,50 +478,91 @@ async function executeReviewRun(request) {
   }
 
   const context = collectReviewContext(request.cwd, target);
-  const prompt = buildAdversarialReviewPrompt(context, focusText);
-  const result = await runAppServerTurn(context.repoRoot, {
-    prompt,
-    model: request.model,
-    sandbox: "read-only",
-    outputSchema: readOutputSchema(REVIEW_SCHEMA),
-    onProgress: request.onProgress
-  });
-  const parsed = parseStructuredOutput(result.finalMessage, {
-    status: result.status,
-    failureMessage: result.error?.message ?? result.stderr
-  });
+  const outputSchema = readOutputSchema(REVIEW_SCHEMA);
+  const stageResults = [];
+  let finalStage = null;
+  let finalResult = null;
+  let finalParsed = null;
+
+  for (const stage of ADVERSARIAL_REVIEW_STAGES) {
+    request.onProgress?.(`${stage.label} started.`, "reviewing");
+    const prompt = buildAdversarialReviewPrompt(context, focusText, stage, stageResults);
+    const result = await runAppServerTurn(context.repoRoot, {
+      prompt,
+      model: request.model,
+      sandbox: "read-only",
+      outputSchema,
+      onProgress: request.onProgress
+    });
+    const parsed = parseStructuredOutput(result.finalMessage, {
+      status: result.status,
+      failureMessage: result.error?.message ?? result.stderr
+    });
+    const stageResult = {
+      stage: stage.id,
+      label: stage.label,
+      threadId: result.threadId,
+      turnId: result.turnId,
+      status: result.status,
+      parsed: parsed.parsed,
+      rawOutput: parsed.rawOutput,
+      parseError: parsed.parseError,
+      reasoningSummary: result.reasoningSummary
+    };
+    stageResults.push(stageResult);
+    finalStage = stage;
+    finalResult = result;
+    finalParsed = parsed;
+
+    if (parsed.parseError || reviewStageFailed(parsed.parsed)) {
+      break;
+    }
+  }
+
+  if (finalParsed?.parsed) {
+    finalParsed = {
+      ...finalParsed,
+      parsed: withReviewLoopState(
+        finalParsed.parsed,
+        finalStage,
+        stageResults.length === ADVERSARIAL_REVIEW_STAGES.length && !reviewStageFailed(finalParsed.parsed)
+      )
+    };
+  }
+
   const payload = {
     review: reviewName,
     target,
-    threadId: result.threadId,
+    threadId: finalResult.threadId,
     context: {
       repoRoot: context.repoRoot,
       branch: context.branch,
       summary: context.summary
     },
+    stages: stageResults,
     codex: {
-      status: result.status,
-      stderr: result.stderr,
-      stdout: result.finalMessage,
-      reasoning: result.reasoningSummary
+      status: finalResult.status,
+      stderr: finalResult.stderr,
+      stdout: finalResult.finalMessage,
+      reasoning: finalResult.reasoningSummary
     },
-    result: parsed.parsed,
-    rawOutput: parsed.rawOutput,
-    parseError: parsed.parseError,
-    reasoningSummary: result.reasoningSummary
+    result: finalParsed.parsed,
+    rawOutput: finalParsed.rawOutput,
+    parseError: finalParsed.parseError,
+    reasoningSummary: finalResult.reasoningSummary
   };
 
   return {
-    exitStatus: result.status,
-    threadId: result.threadId,
-    turnId: result.turnId,
+    exitStatus: finalResult.status,
+    threadId: finalResult.threadId,
+    turnId: finalResult.turnId,
     payload,
-    rendered: renderReviewResult(parsed, {
+    rendered: renderReviewResult(finalParsed, {
       reviewLabel: reviewName,
       targetLabel: context.target.label,
-      reasoningSummary: result.reasoningSummary
+      reasoningSummary: finalResult.reasoningSummary
     }),
-    summary: parsed.parsed?.summary ?? parsed.parseError ?? firstMeaningfulLine(result.finalMessage, `${reviewName} finished.`),
+    summary: finalParsed.parsed?.summary ?? finalParsed.parseError ?? firstMeaningfulLine(finalResult.finalMessage, `${reviewName} finished.`),
     jobTitle: `Codex ${reviewName}`,
     jobClass: "review",
     targetLabel: context.target.label

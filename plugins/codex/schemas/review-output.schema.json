@@ -16,6 +16,41 @@
         "needs-attention"
       ]
     },
+    "status": {
+      "type": "string",
+      "enum": [
+        "approve",
+        "needs-attention"
+      ]
+    },
+    "failed_stage": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "software",
+        "math",
+        "research",
+        null
+      ]
+    },
+    "restart_from": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "software",
+        "math",
+        "research",
+        "final-synthesis",
+        null
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
     "summary": {
       "type": "string",
       "minLength": 1

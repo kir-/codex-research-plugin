@@ -162,6 +162,9 @@ test("rescue command absorbs continue semantics", () => {
   assert.match(readme, /### `\/codex:review`/);
   assert.match(readme, /### `\/codex:adversarial-review`/);
   assert.match(readme, /uses the same review target selection as `\/codex:review`/i);
+  assert.match(readme, /Software Review[\s\S]*Math Review[\s\S]*Research Review/);
+  assert.match(readme, /`failed_stage`/);
+  assert.match(readme, /`restart_from`/);
   assert.match(readme, /--base main challenge whether this was the right caching and retry design/);
   assert.match(readme, /### `\/codex:rescue`/);
   assert.match(readme, /### `\/codex:transfer`/);

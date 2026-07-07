@@ -412,6 +412,56 @@ test("adversarial review advances through math and research after software appro
   assert.match(state.lastTurnStart.prompt, /"stage": "math"/);
 });
 
+test("individual research review subcommands use their stage prompts", () => {
+  const cases = [
+    ["software-review", /adversarial software review/],
+    ["math-review", /adversarial mathematical review/],
+    ["research-review", /adversarial research review/]
+  ];
+
+  for (const [subcommand, promptPattern] of cases) {
+    const repo = makeTempDir();
+    const binDir = makeTempDir();
+    installFakeCodex(binDir, "adversarial-clean");
+    initGitRepo(repo);
+    fs.mkdirSync(path.join(repo, "src"));
+    fs.writeFileSync(path.join(repo, "src", "app.js"), "export const value = items[0];\n");
+    run("git", ["add", "src/app.js"], { cwd: repo });
+    run("git", ["commit", "-m", "init"], { cwd: repo });
+    fs.writeFileSync(path.join(repo, "src", "app.js"), "export const value = items[0].id;\n");
+
+    const result = run("node", [SCRIPT, subcommand], {
+      cwd: repo,
+      env: buildEnv(binDir)
+    });
+
+    assert.equal(result.status, 0, result.stderr);
+    const state = JSON.parse(fs.readFileSync(path.join(binDir, "fake-codex-state.json"), "utf8"));
+    assert.match(state.lastTurnStart.prompt, promptPattern);
+  }
+});
+
+test("full-review command runs the staged review loop", () => {
+  const repo = makeTempDir();
+  const binDir = makeTempDir();
+  installFakeCodex(binDir, "adversarial-clean");
+  initGitRepo(repo);
+  fs.mkdirSync(path.join(repo, "src"));
+  fs.writeFileSync(path.join(repo, "src", "app.js"), "export const value = items[0];\n");
+  run("git", ["add", "src/app.js"], { cwd: repo });
+  run("git", ["commit", "-m", "init"], { cwd: repo });
+  fs.writeFileSync(path.join(repo, "src", "app.js"), "export const value = items[0].id;\n");
+
+  const result = run("node", [SCRIPT, "full-review"], {
+    cwd: repo,
+    env: buildEnv(binDir)
+  });
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /# Codex Full Review/);
+  assert.match(result.stdout, /restart_from: final-synthesis/);
+});
+
 test("adversarial review accepts the same base-branch targeting as review", () => {
   const repo = makeTempDir();
   const binDir = makeTempDir();

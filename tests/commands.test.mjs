@@ -70,15 +70,39 @@ test("adversarial review command uses AskUserQuestion and background Bash while 
   assert.match(source, /can still take extra focus text after the flags/i);
 });
 
+test("research review stage commands call the matching companion subcommands", () => {
+  const commands = [
+    ["full-review.md", "full-review", "Codex full review"],
+    ["software-review.md", "software-review", "Codex software review"],
+    ["math-review.md", "math-review", "Codex math review"],
+    ["research-review.md", "research-review", "Codex research review"]
+  ];
+
+  for (const [file, subcommand, description] of commands) {
+    const source = read(`commands/${file}`);
+    assert.match(source, /AskUserQuestion/);
+    assert.match(source, /review-only/i);
+    assert.match(source, /return Codex's output verbatim to the user/i);
+    assert.match(source, new RegExp(`${subcommand} "\\$ARGUMENTS"`));
+    assert.match(source, new RegExp(`description:\\s*"${description}"`));
+    assert.match(source, /run_in_background:\s*true/);
+    assert.match(source, /does not support `--scope staged` or `--scope unstaged`/i);
+  }
+});
+
 test("continue is not exposed as a user-facing command", () => {
   const commandFiles = fs.readdirSync(path.join(PLUGIN_ROOT, "commands")).sort();
   assert.deepEqual(commandFiles, [
     "adversarial-review.md",
     "cancel.md",
+    "full-review.md",
+    "math-review.md",
     "rescue.md",
+    "research-review.md",
     "result.md",
     "review.md",
     "setup.md",
+    "software-review.md",
     "status.md",
     "transfer.md"
   ]);
@@ -160,12 +184,15 @@ test("rescue command absorbs continue semantics", () => {
   assert.match(readme, /continue a previous Codex task/i);
   assert.match(readme, /### `\/codex:setup`/);
   assert.match(readme, /### `\/codex:review`/);
-  assert.match(readme, /### `\/codex:adversarial-review`/);
+  assert.match(readme, /### `\/codex:full-review`/);
+  assert.match(readme, /\/codex:software-review/);
+  assert.match(readme, /\/codex:math-review/);
+  assert.match(readme, /\/codex:research-review/);
   assert.match(readme, /uses the same review target selection as `\/codex:review`/i);
   assert.match(readme, /Software Review[\s\S]*Math Review[\s\S]*Research Review/);
   assert.match(readme, /`failed_stage`/);
   assert.match(readme, /`restart_from`/);
-  assert.match(readme, /--base main challenge whether this was the right caching and retry design/);
+  assert.match(readme, /--base main challenge whether the policy-ratio estimator is correct/);
   assert.match(readme, /### `\/codex:rescue`/);
   assert.match(readme, /### `\/codex:transfer`/);
   assert.match(readme, /### `\/codex:status`/);

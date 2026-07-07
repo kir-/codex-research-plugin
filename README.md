@@ -1,6 +1,6 @@
 # Codex plugin for Claude Code
 
-Use Codex from inside Claude Code for code reviews or to delegate tasks to Codex.
+Use Codex from inside Claude Code for code reviews, staged research review, or delegated tasks.
 
 This plugin is for Claude Code users who want an easy way to start using Codex from the workflow
 they already have.
@@ -10,7 +10,9 @@ they already have.
 ## What You Get
 
 - `/codex:review` for a normal read-only Codex review
-- `/codex:adversarial-review` for a steerable challenge review
+- `/codex:full-review` for the staged Software -> Math -> Research review loop
+- `/codex:software-review`, `/codex:math-review`, and `/codex:research-review` for individual review stages
+- `/codex:adversarial-review` as a backwards-compatible alias for the staged challenge review
 - `/codex:rescue`, `/codex:transfer`, `/codex:status`, `/codex:result`, and `/codex:cancel` to delegate work, hand off sessions, and manage background jobs
 
 ## Requirements
@@ -86,7 +88,7 @@ Use it when you want:
 - a review of your current uncommitted changes
 - a review of your branch compared to a base branch like `main`
 
-Use `--base <ref>` for branch review. It also supports `--wait` and `--background`. It is not steerable and does not take custom focus text. Use [`/codex:adversarial-review`](#codexadversarial-review) when you want to challenge a specific decision or risk area.
+Use `--base <ref>` for branch review. It also supports `--wait` and `--background`. It is not steerable and does not take custom focus text. Use [`/codex:full-review`](#codexfull-review) when you want the staged software/math/research review loop.
 
 Examples:
 
@@ -98,7 +100,7 @@ Examples:
 
 This command is read-only and will not perform any changes. When run in the background you can use [`/codex:status`](#codexstatus) to check on the progress and [`/codex:cancel`](#codexcancel) to cancel the ongoing task.
 
-### `/codex:adversarial-review`
+### `/codex:full-review`
 
 Runs a **steerable staged review** that questions the chosen implementation, math, research evidence, and final claim.
 
@@ -121,17 +123,35 @@ Use it when you want:
 
 - a review before shipping that challenges the direction, not just the code details
 - review focused on software correctness, mathematical validity, research claims, hidden assumptions, and alternative approaches
-- pressure-testing around specific risk areas like auth, data loss, rollback, race conditions, or reliability
+- pressure-testing around specific risk areas like tensor shapes, batching, device placement, gradient flow, estimators, baselines, or unsupported claims
 
 Examples:
 
 ```bash
-/codex:adversarial-review
-/codex:adversarial-review --base main challenge whether this was the right caching and retry design
-/codex:adversarial-review --background look for race conditions and question the chosen approach
+/codex:full-review
+/codex:full-review --base main challenge whether the policy-ratio estimator is correct
+/codex:full-review --background look for batching, gradient, and claim-validity issues
 ```
 
 This command is read-only. It does not fix code.
+
+### Individual Research Review Stages
+
+Use these when you want to run one stage directly instead of the whole loop:
+
+- `/codex:software-review` checks RL/ML implementation risks such as shapes, devices, batching, rollout buffers, gradient lifecycle, checkpoints, seeds, and metrics.
+- `/codex:math-review` checks derivations, estimators, objectives, gradients, reductions, and math/code alignment.
+- `/codex:research-review` checks claims, experiments, evidence, baselines, caveats, benchmark validity, and merge-readiness.
+
+Each stage supports the same targeting flags as `/codex:review`, plus optional focus text:
+
+```bash
+/codex:software-review --base main inspect vectorized rollout handling
+/codex:math-review check the log-prob ratio and detach behavior
+/codex:research-review --background verify the stated result is supported by experiments
+```
+
+`/codex:adversarial-review` remains available as a backwards-compatible alias for `/codex:full-review`.
 
 ### `/codex:rescue`
 
@@ -263,7 +283,7 @@ When the review gate is enabled, the plugin uses a `Stop` hook to run a targeted
 ### Start Something Long-Running
 
 ```bash
-/codex:adversarial-review --background
+/codex:full-review --background
 /codex:rescue --background investigate the flaky test
 ```
 

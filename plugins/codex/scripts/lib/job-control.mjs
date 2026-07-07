@@ -31,6 +31,9 @@ function getJobTypeLabel(job) {
   if (job.kind === "adversarial-review") {
     return "adversarial-review";
   }
+  if (job.kind === "full-review" || job.kind === "software-review" || job.kind === "math-review" || job.kind === "research-review") {
+    return job.kind;
+  }
   if (job.jobClass === "review") {
     return "review";
   }

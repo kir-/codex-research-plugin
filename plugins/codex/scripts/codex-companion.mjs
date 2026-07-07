@@ -79,6 +79,10 @@ function printUsage() {
       "  node scripts/codex-companion.mjs setup [--enable-review-gate|--disable-review-gate] [--json]",
       "  node scripts/codex-companion.mjs review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>]",
       "  node scripts/codex-companion.mjs adversarial-review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [focus text]",
+      "  node scripts/codex-companion.mjs full-review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [focus text]",
+      "  node scripts/codex-companion.mjs software-review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [focus text]",
+      "  node scripts/codex-companion.mjs math-review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [focus text]",
+      "  node scripts/codex-companion.mjs research-review [--wait|--background] [--base <ref>] [--scope <auto|working-tree|branch>] [focus text]",
       "  node scripts/codex-companion.mjs task [--background] [--write] [--resume-last|--resume|--fresh] [--model <model|spark>] [--effort <none|minimal|low|medium|high|xhigh>] [prompt]",
       "  node scripts/codex-companion.mjs transfer [--source <claude-jsonl>] [--json]",
       "  node scripts/codex-companion.mjs status [job-id] [--all] [--json]",
@@ -255,6 +259,29 @@ const ADVERSARIAL_REVIEW_STAGES = [
     prompt: "adversarial-research-review"
   }
 ];
+
+const STRUCTURED_REVIEW_CONFIGS = {
+  "adversarial-review": {
+    reviewName: "Adversarial Review",
+    stages: ADVERSARIAL_REVIEW_STAGES
+  },
+  "full-review": {
+    reviewName: "Full Review",
+    stages: ADVERSARIAL_REVIEW_STAGES
+  },
+  "software-review": {
+    reviewName: "Software Review",
+    stages: [ADVERSARIAL_REVIEW_STAGES[0]]
+  },
+  "math-review": {
+    reviewName: "Math Review",
+    stages: [ADVERSARIAL_REVIEW_STAGES[1]]
+  },
+  "research-review": {
+    reviewName: "Research Review",
+    stages: [ADVERSARIAL_REVIEW_STAGES[2]]
+  }
+};
 
 function buildAdversarialReviewPrompt(context, focusText, stage, completedStageResults = []) {
   const template = loadPromptTemplate(ROOT_DIR, stage.prompt);
@@ -479,12 +506,13 @@ async function executeReviewRun(request) {
 
   const context = collectReviewContext(request.cwd, target);
   const outputSchema = readOutputSchema(REVIEW_SCHEMA);
+  const reviewStages = request.reviewStages ?? ADVERSARIAL_REVIEW_STAGES;
   const stageResults = [];
   let finalStage = null;
   let finalResult = null;
   let finalParsed = null;
 
-  for (const stage of ADVERSARIAL_REVIEW_STAGES) {
+  for (const stage of reviewStages) {
     request.onProgress?.(`${stage.label} started.`, "reviewing");
     const prompt = buildAdversarialReviewPrompt(context, focusText, stage, stageResults);
     const result = await runAppServerTurn(context.repoRoot, {
@@ -519,13 +547,13 @@ async function executeReviewRun(request) {
     }
   }
 
-  if (finalParsed?.parsed) {
+  if (finalParsed?.parsed && (reviewStageFailed(finalParsed.parsed) || reviewStages.length > 1)) {
     finalParsed = {
       ...finalParsed,
       parsed: withReviewLoopState(
         finalParsed.parsed,
         finalStage,
-        stageResults.length === ADVERSARIAL_REVIEW_STAGES.length && !reviewStageFailed(finalParsed.parsed)
+        reviewStages.length > 1 && stageResults.length === reviewStages.length && !reviewStageFailed(finalParsed.parsed)
       )
     };
   }
@@ -642,8 +670,15 @@ async function executeTaskRun(request) {
 }
 
 function buildReviewJobMetadata(reviewName, target) {
+  const kindByReviewName = {
+    "Adversarial Review": "adversarial-review",
+    "Full Review": "full-review",
+    "Software Review": "software-review",
+    "Math Review": "math-review",
+    "Research Review": "research-review"
+  };
   return {
-    kind: reviewName === "Adversarial Review" ? "adversarial-review" : "review",
+    kind: kindByReviewName[reviewName] ?? "review",
     title: reviewName === "Review" ? "Codex Review" : `Codex ${reviewName}`,
     summary: `${reviewName} ${target.label}`
   };
@@ -672,6 +707,9 @@ function renderQueuedTaskLaunch(payload) {
 function getJobKindLabel(kind, jobClass) {
   if (kind === "adversarial-review") {
     return "adversarial-review";
+  }
+  if (kind === "full-review" || kind === "software-review" || kind === "math-review" || kind === "research-review") {
+    return kind;
   }
   return jobClass === "review" ? "review" : "rescue";
 }
@@ -858,6 +896,7 @@ async function handleReviewCommand(argv, config) {
         model: options.model,
         focusText,
         reviewName: config.reviewName,
+        reviewStages: config.reviewStages,
         onProgress: progress
       }),
     { json: options.json }
@@ -1148,10 +1187,17 @@ async function main() {
       await handleReview(argv);
       break;
     case "adversarial-review":
+    case "full-review":
+    case "software-review":
+    case "math-review":
+    case "research-review": {
+      const config = STRUCTURED_REVIEW_CONFIGS[subcommand];
       await handleReviewCommand(argv, {
-        reviewName: "Adversarial Review"
+        reviewName: config.reviewName,
+        reviewStages: config.stages
       });
       break;
+    }
     case "task":
       await handleTask(argv);
       break;

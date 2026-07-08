@@ -4,6 +4,10 @@
   "additionalProperties": false,
   "required": [
     "verdict",
+    "status",
+    "failed_stage",
+    "restart_from",
+    "reason",
     "summary",
     "findings",
     "next_steps"
@@ -49,7 +53,10 @@
       ]
     },
     "reason": {
-      "type": "string"
+      "type": [
+        "string",
+        "null"
+      ]
     },
     "summary": {
       "type": "string",
